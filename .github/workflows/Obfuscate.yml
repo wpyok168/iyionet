@@ -35,11 +35,24 @@ jobs:
         id: get_remote_version
         run: |
           echo -e "\033[34m[获取远程文件哈希]\033[0m"
-          RAW_URL="https://raw.githubusercontent.com/Setout8/Book-Pen-Book/main/_worker.js"
-          # 获取文件内容并计算哈希
-          FILE_HASH=$(curl -s "$RAW_URL" | sha256sum | cut -d' ' -f1)
-          echo "远程文件哈希: $FILE_HASH"
-          echo "REMOTE_VERSION=$FILE_HASH" >> $GITHUB_ENV
+          
+          # 获取 _worker.js 文件哈希
+          WORKER_URL="https://raw.githubusercontent.com/Setout8/Book-Pen-Book/main/_worker.js"
+          WORKER_HASH=$(curl -s "$WORKER_URL" | sha256sum | cut -d' ' -f1)
+          echo "_worker.js 文件哈希: $WORKER_HASH"
+          
+          # 获取 origin.js 文件哈希
+          ORIGIN_URL="https://raw.githubusercontent.com/Setout8/Book-Pen-Book/main/origin.js"
+          ORIGIN_HASH=$(curl -s "$ORIGIN_URL" | sha256sum | cut -d' ' -f1)
+          echo "origin.js 文件哈希: $ORIGIN_HASH"
+          
+          # 合并两个文件的哈希作为总版本号
+          COMBINED_HASH=$(echo "${WORKER_HASH}${ORIGIN_HASH}" | sha256sum | cut -d' ' -f1)
+          echo "合并版本哈希: $COMBINED_HASH"
+          
+          echo "REMOTE_VERSION=$COMBINED_HASH" >> $GITHUB_ENV
+          echo "WORKER_HASH=$WORKER_HASH" >> $GITHUB_ENV
+          echo "ORIGIN_HASH=$ORIGIN_HASH" >> $GITHUB_ENV
 
       - name: 判断是否需要更新
         id: check_update
@@ -53,12 +66,23 @@ jobs:
             echo "UPDATE_NEEDED=true" >> $GITHUB_ENV
           fi
 
-      - name: 下载最新 worker 文件
+      - name: 下载最新文件
         if: env.UPDATE_NEEDED == 'true'
         run: |
-          echo -e "\033[34m[下载最新 _worker.js]\033[0m"
-          RAW_URL="https://raw.githubusercontent.com/Setout8/Book-Pen-Book/main/_worker.js"
-          curl -s -o _worker.js "$RAW_URL"
+          echo -e "\033[34m[下载最新文件]\033[0m"
+          
+          # 下载 _worker.js
+          WORKER_URL="https://raw.githubusercontent.com/Setout8/Book-Pen-Book/main/_worker.js"
+          echo "下载 _worker.js..."
+          curl -s -o _worker.js "$WORKER_URL"
+          
+          # 下载 origin.js
+          ORIGIN_URL="https://raw.githubusercontent.com/Setout8/Book-Pen-Book/main/origin.js"
+          echo "下载 origin.js..."
+          curl -s -o origin.js "$ORIGIN_URL"
+          
+          echo -e "\033[34m[文件下载完成]\033[0m"
+          ls -la _worker.js origin.js
           
           echo -e "\033[34m[记录新版本号]\033[0m"
           echo "$REMOTE_VERSION" > version.txt
@@ -67,6 +91,9 @@ jobs:
         if: env.UPDATE_NEEDED == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "🔄 自动同步最新 Worker 版本"
+          commit_message: "🔄 自动同步最新 Worker 文件
+          
+          - _worker.js: ${{ env.WORKER_HASH }}
+          - origin.js: ${{ env.ORIGIN_HASH }}"
           commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
           push_options: --force
