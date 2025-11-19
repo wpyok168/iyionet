@@ -1,4 +1,4 @@
-来源(https://github.com/Setout8/Book-Pen-Book)
+来源(https://github.com/Setout8/Book-Pen-Book)(https://github.com/bia-pain-bache/BPB-Worker-Panel)
 ## 使用方法一：Pages+Fork公开仓库 [视频教程](https://youtu.be/B4pBQHWgvfw)
 1. 直接`Fork`本存储库。本存储库`main`主线默认为`自动升级为最新版本`。
 2. 到`Cloudflare`利用`Pages+github`搭建。
