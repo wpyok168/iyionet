@@ -30,7 +30,6 @@ jobs:
             LOCAL_VERSION=""
           fi
           echo "LOCAL_VERSION=$LOCAL_VERSION" >> $GITHUB_ENV
-
       - name: 获取最新 Release 信息
         id: get_release
         run: |
@@ -47,7 +46,6 @@ jobs:
           echo "最新版本号: $TAG_NAME"
           echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
           echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
-
       - name: 判断是否需要更新
         id: check_update
         run: |
@@ -59,7 +57,6 @@ jobs:
             echo -e "\033[33m发现新版本，需要更新！\033[0m"
             echo "UPDATE_NEEDED=true" >> $GITHUB_ENV
           fi
-
       - name: 如果需要，清理旧文件并下载新版本
         if: env.UPDATE_NEEDED == 'true'
         run: |
@@ -73,58 +70,6 @@ jobs:
           rm worker.zip
           echo -e "\033[34m[记录新版本号]\033[0m"
           echo "$TAG_NAME" > version.txt
-
-      - name: 重命名 Worker 文件
-        if: env.UPDATE_NEEDED == 'true'
-        run: |
-          echo -e "\033[34m[重命名 Worker 文件]\033[0m"
-          if [ -f "_worker.js" ]; then
-            echo -e "\033[32m找到 _worker.js，重命名为 origin.js\033[0m"
-            mv _worker.js origin.js
-            echo -e "\033[32m重命名完成：_worker.js → origin.js\033[0m"
-          else
-            echo -e "\033[33m未找到 _worker.js 文件\033[0m"
-            # 检查是否有其他可能的 worker 文件
-            ls -la *.js 2>/dev/null || echo "没有找到任何 JS 文件"
-          fi
-
-      - name: 安装 JavaScript 混淆器
-        if: env.UPDATE_NEEDED == 'true'
-        run: |
-          echo -e "\033[34m[安装 JavaScript 混淆器]\033[0m"
-          npm install -g javascript-obfuscator
-
-      - name: 混淆 Worker 文件
-        if: env.UPDATE_NEEDED == 'true'
-        run: |
-          echo -e "\033[34m[混淆 Worker 文件]\033[0m"
-          if [ -f "origin.js" ]; then
-            echo -e "\033[32m找到 origin.js，开始混淆...\033[0m"
-            javascript-obfuscator origin.js --output _worker.js --compact true \
-              --control-flow-flattening true \
-              --control-flow-flattening-threshold 0.75 \
-              --dead-code-injection true \
-              --dead-code-injection-threshold 0.4 \
-              --disable-console-output true \
-              --identifier-names-generator hexadecimal \
-              --string-array true \
-              --string-array-encoding rc4 \
-              --string-array-threshold 0.8 \
-              --string-array-rotate true \
-              --string-array-shuffle true \
-              --transform-object-keys true
-            echo -e "\033[32mWorker 文件混淆完成：origin.js → _worker.js\033[0m"
-            echo -e "\033[32m现在仓库中包含两个文件：origin.js（未混淆）和 _worker.js（已混淆）\033[0m"
-          else
-            echo -e "\033[33m未找到 origin.js 文件，跳过混淆步骤\033[0m"
-          fi
-
-      - name: 显示文件列表
-        if: env.UPDATE_NEEDED == 'true'
-        run: |
-          echo -e "\033[34m[最终文件列表]\033[0m"
-          ls -la
-
       - name: 提交更改
         if: env.UPDATE_NEEDED == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
