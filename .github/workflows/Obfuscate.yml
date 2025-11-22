@@ -31,34 +31,28 @@ jobs:
           fi
           echo "LOCAL_VERSION=$LOCAL_VERSION" >> $GITHUB_ENV
 
-      - name: 获取最新文件哈希作为版本
-        id: get_remote_version
+      - name: 获取最新 Release 信息
+        id: get_release
         run: |
-          echo -e "\033[34m[获取远程文件哈希]\033[0m"
-          
-          # 获取 _worker.js 文件哈希
-          WORKER_URL="https://raw.githubusercontent.com/Setout8/Book-Pen-Book/main/_worker.js"
-          WORKER_HASH=$(curl -s "$WORKER_URL" | sha256sum | cut -d' ' -f1)
-          echo "_worker.js 文件哈希: $WORKER_HASH"
-          
-          # 获取 origin.js 文件哈希
-          ORIGIN_URL="https://raw.githubusercontent.com/Setout8/Book-Pen-Book/main/origin.js"
-          ORIGIN_HASH=$(curl -s "$ORIGIN_URL" | sha256sum | cut -d' ' -f1)
-          echo "origin.js 文件哈希: $ORIGIN_HASH"
-          
-          # 合并两个文件的哈希作为总版本号
-          COMBINED_HASH=$(echo "${WORKER_HASH}${ORIGIN_HASH}" | sha256sum | cut -d' ' -f1)
-          echo "合并版本哈希: $COMBINED_HASH"
-          
-          echo "REMOTE_VERSION=$COMBINED_HASH" >> $GITHUB_ENV
-          echo "WORKER_HASH=$WORKER_HASH" >> $GITHUB_ENV
-          echo "ORIGIN_HASH=$ORIGIN_HASH" >> $GITHUB_ENV
+          echo -e "\033[34m[获取最新 Release]\033[0m"
+          API_URL="https://api.github.com/repos/bia-pain-bache/BPB-Worker-Panel/releases"
+          RESPONSE=$(curl -s "$API_URL")
+          LATEST_RELEASE=$(echo "$RESPONSE" | jq -r '.[0]')
+          TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
+          DOWNLOAD_URL=$(echo "$LATEST_RELEASE" | jq -r '.assets[] | select(.name == "worker.zip") | .browser_download_url')
+          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
+            echo -e "\033[31m未找到 worker.zip，退出！\033[0m"
+            exit 1
+          fi
+          echo "最新版本号: $TAG_NAME"
+          echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
 
       - name: 判断是否需要更新
         id: check_update
         run: |
           echo -e "\033[34m[判断是否需要更新]\033[0m"
-          if [ "$LOCAL_VERSION" = "$REMOTE_VERSION" ]; then
+          if [ "$LOCAL_VERSION" = "$TAG_NAME" ]; then
             echo -e "\033[32m已经是最新版本，无需更新。\033[0m"
             echo "UPDATE_NEEDED=false" >> $GITHUB_ENV
           else
@@ -66,34 +60,75 @@ jobs:
             echo "UPDATE_NEEDED=true" >> $GITHUB_ENV
           fi
 
-      - name: 下载最新文件
+      - name: 如果需要，清理旧文件并下载新版本
         if: env.UPDATE_NEEDED == 'true'
         run: |
-          echo -e "\033[34m[下载最新文件]\033[0m"
-          
-          # 下载 _worker.js
-          WORKER_URL="https://raw.githubusercontent.com/Setout8/Book-Pen-Book/main/_worker.js"
-          echo "下载 _worker.js..."
-          curl -s -o _worker.js "$WORKER_URL"
-          
-          # 下载 origin.js
-          ORIGIN_URL="https://raw.githubusercontent.com/Setout8/Book-Pen-Book/main/origin.js"
-          echo "下载 origin.js..."
-          curl -s -o origin.js "$ORIGIN_URL"
-          
-          echo -e "\033[34m[文件下载完成]\033[0m"
-          ls -la _worker.js origin.js
-          
+          echo -e "\033[34m[清理旧文件]\033[0m"
+          rm -rf ./*
+          echo -e "\033[34m[下载最新 worker.zip]\033[0m"
+          wget -O worker.zip "$DOWNLOAD_URL"
+          echo -e "\033[34m[解压 worker.zip]\033[0m"
+          unzip worker.zip
+          echo -e "\033[34m[删除 worker.zip]\033[0m"
+          rm worker.zip
           echo -e "\033[34m[记录新版本号]\033[0m"
-          echo "$REMOTE_VERSION" > version.txt
+          echo "$TAG_NAME" > version.txt
+
+      - name: 重命名 Worker 文件
+        if: env.UPDATE_NEEDED == 'true'
+        run: |
+          echo -e "\033[34m[重命名 Worker 文件]\033[0m"
+          if [ -f "_worker.js" ]; then
+            echo -e "\033[32m找到 _worker.js，重命名为 origin.js\033[0m"
+            mv _worker.js origin.js
+            echo -e "\033[32m重命名完成：_worker.js → origin.js\033[0m"
+          else
+            echo -e "\033[33m未找到 _worker.js 文件\033[0m"
+            # 检查是否有其他可能的 worker 文件
+            ls -la *.js 2>/dev/null || echo "没有找到任何 JS 文件"
+          fi
+
+      - name: 安装 JavaScript 混淆器
+        if: env.UPDATE_NEEDED == 'true'
+        run: |
+          echo -e "\033[34m[安装 JavaScript 混淆器]\033[0m"
+          npm install -g javascript-obfuscator
+
+      - name: 混淆 Worker 文件
+        if: env.UPDATE_NEEDED == 'true'
+        run: |
+          echo -e "\033[34m[混淆 Worker 文件]\033[0m"
+          if [ -f "origin.js" ]; then
+            echo -e "\033[32m找到 origin.js，开始混淆...\033[0m"
+            javascript-obfuscator origin.js --output _worker.js --compact true \
+              --control-flow-flattening true \
+              --control-flow-flattening-threshold 0.75 \
+              --dead-code-injection true \
+              --dead-code-injection-threshold 0.4 \
+              --disable-console-output true \
+              --identifier-names-generator hexadecimal \
+              --string-array true \
+              --string-array-encoding rc4 \
+              --string-array-threshold 0.8 \
+              --string-array-rotate true \
+              --string-array-shuffle true \
+              --transform-object-keys true
+            echo -e "\033[32mWorker 文件混淆完成：origin.js → _worker.js\033[0m"
+            echo -e "\033[32m现在仓库中包含两个文件：origin.js（未混淆）和 _worker.js（已混淆）\033[0m"
+          else
+            echo -e "\033[33m未找到 origin.js 文件，跳过混淆步骤\033[0m"
+          fi
+
+      - name: 显示文件列表
+        if: env.UPDATE_NEEDED == 'true'
+        run: |
+          echo -e "\033[34m[最终文件列表]\033[0m"
+          ls -la
 
       - name: 提交更改
         if: env.UPDATE_NEEDED == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "🔄 自动同步最新 Worker 文件
-          
-          - _worker.js: ${{ env.WORKER_HASH }}
-          - origin.js: ${{ env.ORIGIN_HASH }}"
+          commit_message: "🔄 自动同步最新 Worker 版本：${{ env.TAG_NAME }}"
           commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
           push_options: --force
