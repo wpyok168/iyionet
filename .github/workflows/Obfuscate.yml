@@ -30,6 +30,7 @@ jobs:
             LOCAL_VERSION=""
           fi
           echo "LOCAL_VERSION=$LOCAL_VERSION" >> $GITHUB_ENV
+
       - name: 获取最新 Release 信息
         id: get_release
         run: |
@@ -46,6 +47,7 @@ jobs:
           echo "最新版本号: $TAG_NAME"
           echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
           echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+
       - name: 判断是否需要更新
         id: check_update
         run: |
@@ -57,6 +59,7 @@ jobs:
             echo -e "\033[33m发现新版本，需要更新！\033[0m"
             echo "UPDATE_NEEDED=true" >> $GITHUB_ENV
           fi
+
       - name: 如果需要，清理旧文件并下载新版本
         if: env.UPDATE_NEEDED == 'true'
         run: |
@@ -70,6 +73,18 @@ jobs:
           rm worker.zip
           echo -e "\033[34m[记录新版本号]\033[0m"
           echo "$TAG_NAME" > version.txt
+
+      - name: 下载最新 README.md
+        if: env.UPDATE_NEEDED == 'true'
+        run: |
+          echo -e "\033[34m[下载最新 README.md]\033[0m"
+          wget -O README.md "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/refs/heads/main/README.md"
+          if [ $? -eq 0 ]; then
+            echo -e "\033[32mREADME.md 下载成功\033[0m"
+          else
+            echo -e "\033[31mREADME.md 下载失败\033[0m"
+          fi
+
       - name: 提交更改
         if: env.UPDATE_NEEDED == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
