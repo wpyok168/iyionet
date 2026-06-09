@@ -89,7 +89,7 @@ jobs:
         if: env.UPDATE_NEEDED == 'true'
         run: |
           echo -e "\033[34m[下载最新 README.md]\033[0m"
-          wget -O README.md "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/README.md" || true
+          wget -O README.md "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/refs/heads/main/README.md" || true
 
       - name: 提交并推送更改
         if: env.UPDATE_NEEDED == 'true'
