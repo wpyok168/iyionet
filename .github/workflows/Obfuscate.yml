@@ -5,8 +5,8 @@ on:
     branches:
       - main
   schedule:
-    - cron: "0 1 * * *" # 每天凌晨1点自动运行
-  workflow_dispatch:     # 支持手动运行
+    - cron: "0 1 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: 初始化仓库
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: 获取当前本地版本
         id: get_local_version
@@ -31,19 +33,23 @@ jobs:
           fi
           echo "LOCAL_VERSION=$LOCAL_VERSION" >> $GITHUB_ENV
 
-      - name: 获取最新 Release 信息
+      - name: 获取最新 Release 信息（包含草稿/预发布）
         id: get_release
         run: |
           echo -e "\033[34m[获取最新 Release]\033[0m"
-          API_URL="https://api.github.com/repos/bia-pain-bache/BPB-Worker-Panel/releases"
+          API_URL="https://api.github.com/repos/bia-pain-bache/BPB-Worker-Panel/releases?per_page=10"
           RESPONSE=$(curl -s "$API_URL")
-          LATEST_RELEASE=$(echo "$RESPONSE" | jq -r '.[0]')
+          
+          # 筛选：优先最新发布，包含 draft/prerelease
+          LATEST_RELEASE=$(echo "$RESPONSE" | jq -r 'sort_by(.published_at) | reverse | .[0]')
           TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
           DOWNLOAD_URL=$(echo "$LATEST_RELEASE" | jq -r '.assets[] | select(.name == "worker.zip") | .browser_download_url')
+          
           if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
             echo -e "\033[31m未找到 worker.zip，退出！\033[0m"
             exit 1
           fi
+          
           echo "最新版本号: $TAG_NAME"
           echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
           echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
@@ -60,17 +66,22 @@ jobs:
             echo "UPDATE_NEEDED=true" >> $GITHUB_ENV
           fi
 
-      - name: 如果需要，清理旧文件并下载新版本
+      - name: 安全清理旧文件 + 下载新版本
         if: env.UPDATE_NEEDED == 'true'
         run: |
-          echo -e "\033[34m[清理旧文件]\033[0m"
-          rm -rf ./*
+          echo -e "\033[34m[安全清理旧文件]\033[0m"
+          shopt -s extglob
+          rm -rf !(.git|.github)
+          
           echo -e "\033[34m[下载最新 worker.zip]\033[0m"
           wget -O worker.zip "$DOWNLOAD_URL"
+          
           echo -e "\033[34m[解压 worker.zip]\033[0m"
-          unzip worker.zip
-          echo -e "\033[34m[删除 worker.zip]\033[0m"
-          rm worker.zip
+          unzip -q worker.zip
+          
+          echo -e "\033[34m[删除压缩包]\033[0m"
+          rm -f worker.zip
+          
           echo -e "\033[34m[记录新版本号]\033[0m"
           echo "$TAG_NAME" > version.txt
 
@@ -78,14 +89,9 @@ jobs:
         if: env.UPDATE_NEEDED == 'true'
         run: |
           echo -e "\033[34m[下载最新 README.md]\033[0m"
-          wget -O README.md "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/refs/heads/main/README.md"
-          if [ $? -eq 0 ]; then
-            echo -e "\033[32mREADME.md 下载成功\033[0m"
-          else
-            echo -e "\033[31mREADME.md 下载失败\033[0m"
-          fi
+          wget -O README.md "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/README.md" || true
 
-      - name: 提交更改
+      - name: 提交并推送更改
         if: env.UPDATE_NEEDED == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
